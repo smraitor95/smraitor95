@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#10231e"><title>Gasolina Rentable</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{font-family:system-ui,-apple-system,Roboto,sans-serif;color:#17231d;background:#f2f6f2}*{box-sizing:border-box}body{margin:0}.hero{background:#10231e;color:white;padding:22px 18px}.hero h1{margin:0;font-size:1.6rem}.hero p{margin:6px 0 0;color:#c8d8cf;font-size:.9rem}.wrap{max-width:1000px;margin:auto;padding:14px;display:grid;gap:14px}.card{background:white;border:1px solid #dce6de;border-radius:16px;padding:16px;box-shadow:0 3px 12px #10231e08}h2{font-size:1.1rem;margin:0 0 12px}label{display:block;font-weight:650;font-size:.88rem;margin:11px 0 5px}input,select{width:100%;font:inherit;padding:12px;border:1px solid #cad8ce;border-radius:10px;background:#fff;color:#17231d} .autocomplete{position:relative}.suggestions{position:absolute;z-index:1200;top:100%;left:0;right:0;background:#fff;border:1px solid #cad8ce;border-radius:10px;box-shadow:0 8px 22px #10231e20;overflow:hidden}.suggestions[hidden]{display:none}.suggestion{padding:11px 12px;border-bottom:1px solid #e8eee9;cursor:pointer;line-height:1.35}.suggestion:last-child{border-bottom:0}.suggestion:active,.suggestion:hover{background:#e7f2eb}.suggestion small{display:block;color:#68766e;font-size:.78rem;margin-top:3px}.suggestion-note{padding:10px 12px;color:#68766e;font-size:.82rem}button{font:inherit;font-weight:700;padding:12px 14px;border:0;border-radius:10px;background:#176b4b;color:#fff;width:100%;margin-top:12px}button.alt{background:#e7f2eb;color:#16573d}button:disabled{opacity:.55}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.status{font-size:.87rem;color:#315d46;margin-top:12px;line-height:1.45;overflow-wrap:anywhere}.small{font-size:.78rem;color:#68766e;line-height:1.5}#map{height:310px;border-radius:12px;margin-top:12px}.station{padding:13px 0;border-top:1px solid #e8eee9;display:grid;grid-template-columns:1fr auto;gap:8px}.station h3{margin:0 0 4px;font-size:.98rem}.muted{font-size:.79rem;color:#68766e}.price{text-align:right;font-size:1.05rem;font-weight:800;white-space:nowrap}.pill{display:inline-block;margin-top:5px;padding:3px 8px;border-radius:99px;background:#e5f3e9;color:#17613f;font-size:.76rem}.saving{font-size:.83rem;font-weight:650;margin-top:4px}.foot{padding:0 18px 28px;color:#68766e;font-size:.77rem;max-width:1000px;margin:auto}a{color:#176b4b}.tag{font-size:.74rem;background:#f0f3f0;padding:4px 8px;border-radius:99px;display:inline-block;margin-bottom:10px}@media(min-width:760px){.wrap{grid-template-columns:350px 1fr}.hero{padding-left:max(18px,calc((100% - 964px)/2));padding-right:max(18px,calc((100% - 964px)/2))}.mapcard{grid-column:2;grid-row:1}.formcard{grid-column:1;grid-row:1}.listcard{grid-column:1/-1}}
+</style></head>
+<body>
+<header class="hero"><h1>⛽ Comparador Gasolineras</h1><p>Precios oficiales y rutas por carretera.</p></header>
+<main class="wrap">
+<section class="card formcard"><span class="tag">Versión navegador</span><h2>Tu viaje</h2>
+<label for="origin">Origen (dirección, ciudad o lugar)</label><div class="autocomplete"><input id="origin" placeholder="Ej. Sevilla" autocomplete="off" aria-autocomplete="list" aria-controls="originSuggestions" aria-expanded="false"><div id="originSuggestions" class="suggestions" role="listbox" hidden></div></div>
+<button id="gps" class="alt">📍 Usar mi ubicación</button>
+<label for="destination">Destino</label><div class="autocomplete"><input id="destination" placeholder="Ej. Córdoba" autocomplete="off" aria-autocomplete="list" aria-controls="destinationSuggestions" aria-expanded="false"><div id="destinationSuggestions" class="suggestions" role="listbox" hidden></div></div>
+<div class="grid"><div><label for="cons">Consumo (L/100 km)</label><input id="cons" type="number" min="1" max="40" step=".1" value="6.5"></div><div><label for="litres">Litros a repostar</label><input id="litres" type="number" min="1" max="150" value="40"></div></div>
+<label for="radius">Distancia máxima desde la ruta</label><select id="radius"><option value="5">5 km</option><option value="10">10 km</option><option value="20" selected>20 km</option><option value="30">30 km</option><option value="50">50 km</option></select>
+<button id="calc">Buscar la opción más rentable</button><div id="status" class="status" role="status">Introduce origen y destino. Escribe al menos 3 caracteres y selecciona una sugerencia. Necesita conexión a Internet.</div>
+<p class="small">El navegador consulta MITECO directamente. Si el servidor bloquea CORS, esta versión estática no podrá leer los precios; en ese caso necesitarás el backend proxy del proyecto anterior.</p>
+</section>
+<section class="card mapcard"><h2>Mapa y ruta</h2><div id="map"></div><p class="small">Mapa © OpenStreetMap contributors.</p></section>
+<section class="card listcard"><h2>Gasolineras recomendadas</h2><div id="summary" class="small">Aún no hay resultados.</div><div id="results"></div></section>
+</main>
+<footer class="foot">Precios: MITECO. Sugerencias de lugares: Photon/OpenStreetMap. Rutas: OSRM. Servicios públicos sin garantía de disponibilidad. El ahorro es una estimación y depende de la precisión de las rutas y del consumo real.</footer>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const MITECO='https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/';
+const map=L.map('map').setView([40.2,-3.7],6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);
+let routeLayer=null,markers=L.layerGroup().addTo(map),gpsPoint=null;
+const selectedPlaces={origin:null,destination:null};
+const fmt=n=>Number(n).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2});
+const rad=n=>n*Math.PI/180;
+function num(v){if(v===null||v===undefined)return NaN;let s=String(v).trim().replace(/\s/g,'').replace(',','.');return parseFloat(s)}
+function hav(a,b){let d1=rad(b[0]-a[0]),d2=rad(b[1]-a[1]),q=Math.sin(d1/2)**2+Math.cos(rad(a[0]))*Math.cos(rad(b[0]))*Math.sin(d2/2)**2;return 6371*2*Math.asin(Math.sqrt(q))}
+function pointSeg(p,a,b){const lat=rad(p[0]),kx=111.32*Math.cos(lat),ky=110.574,P=[p[1]*kx,p[0]*ky],A=[a[1]*kx,a[0]*ky],B=[b[1]*kx,b[0]*ky],dx=B[0]-A[0],dy=B[1]-A[1],d=dx*dx+dy*dy,t=d?Math.max(0,Math.min(1,((P[0]-A[0])*dx+(P[1]-A[1])*dy)/d)):0;return Math.hypot(P[0]-A[0]-t*dx,P[1]-A[1]-t*dy)}
+function gap(p,coords){let m=Infinity;for(let i=1;i<coords.length;i++)m=Math.min(m,pointSeg(p,coords[i-1],coords[i]));return m}
+// Photon ofrece sugerencias de lugares mientras se escribe y devuelve coordenadas.
+const autocompleteTimers={origin:null,destination:null};
+const autocompleteControllers={origin:null,destination:null};
+function placeLabel(p){
+ const primary=p.name||p.street||p.city||p.locality||p.district||'Lugar';
+ const secondary=[p.housenumber&&p.street?null:p.street,p.postcode,p.city||p.locality,p.state,p.country].filter(Boolean);
+ return {primary,secondary:[...new Set(secondary)].filter(x=>x!==primary).join(', ')};
+}
+function hideSuggestions(field){const box=$(field+'Suggestions');box.hidden=true;box.innerHTML='';$(field).setAttribute('aria-expanded','false')}
+function renderSuggestions(field,features){
+ const box=$(field+'Suggestions');box.innerHTML='';
+ if(!features.length){box.innerHTML='<div class="suggestion-note">No se encontraron lugares. Prueba con otro nombre.</div>';box.hidden=false;$(field).setAttribute('aria-expanded','true');return}
+ features.forEach(feature=>{
+  const p=feature.properties||{},label=placeLabel(p),coords=feature.geometry&&feature.geometry.coordinates;
+  if(!coords||!Number.isFinite(+coords[0])||!Number.isFinite(+coords[1]))return;
+  const item=document.createElement('div');item.className='suggestion';item.setAttribute('role','option');item.tabIndex=0;
+  const strong=document.createElement('strong');strong.textContent=label.primary;item.appendChild(strong);
+  if(label.secondary){const small=document.createElement('small');small.textContent=label.secondary;item.appendChild(small)}
+  const chosen={label:[label.primary,label.secondary].filter(Boolean).join(', '),coords:[+coords[1],+coords[0]]};
+  item.addEventListener('pointerdown',ev=>{ev.preventDefault();selectPlace(field,chosen)});
+  item.addEventListener('keydown',ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();selectPlace(field,chosen)}});
+  box.appendChild(item);
+ });
+ box.hidden=!box.childElementCount;$(field).setAttribute('aria-expanded',String(!box.hidden));
+}
+function selectPlace(field,place){
+ selectedPlaces[field]=place;$(field).value=place.label;hideSuggestions(field);
+ $('status').textContent=(field==='origin'?'Origen':'Destino')+' seleccionado: '+place.label+'.';
+}
+function setupAutocomplete(field){
+ const input=$(field);
+ input.addEventListener('input',()=>{
+  selectedPlaces[field]=null;
+  if(field==='origin')gpsPoint=null;
+  clearTimeout(autocompleteTimers[field]);
+  if(autocompleteControllers[field])autocompleteControllers[field].abort();
+  const q=input.value.trim();
+  if(q.length<3){hideSuggestions(field);return}
+  const box=$(field+'Suggestions');box.innerHTML='<div class="suggestion-note">Buscando lugares…</div>';box.hidden=false;input.setAttribute('aria-expanded','true');
+  autocompleteTimers[field]=setTimeout(async()=>{
+   const controller=new AbortController();autocompleteControllers[field]=controller;
+   try{
+    let features=[];
+    // Proveedor principal: Photon. Si falla, intenta Nominatim como alternativa.
+    try{
+     const response=await fetch('https://photon.komoot.io/api/?q='+encodeURIComponent(q)+'&limit=6&lang=es',{signal:controller.signal});
+     if(!response.ok)throw Error('Photon HTTP '+response.status);
+     const data=await response.json();features=data.features||[];
+    }catch(primaryError){
+     if(primaryError.name==='AbortError')throw primaryError;
+     const response=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&accept-language=es&q='+encodeURIComponent(q),{signal:controller.signal,headers:{'Accept-Language':'es'}});
+     if(!response.ok)throw Error('Los proveedores de búsqueda no responden');
+     const rows=await response.json();
+     features=rows.map(x=>{const a=x.address||{};const name=x.name||a.city||a.town||a.village||a.road||x.display_name.split(',')[0];return {properties:{name,street:a.road,postcode:a.postcode,city:a.city||a.town||a.village||a.municipality,state:a.state,country:a.country},geometry:{coordinates:[+x.lon,+x.lat]}}});
+    }
+    if(input.value.trim()===q)renderSuggestions(field,features);
+   }catch(err){if(err.name!=='AbortError'&&input.value.trim()===q){
+    const localFile=location.protocol==='content:'||location.protocol==='file:';
+    box.innerHTML='<div class="suggestion-note">'+(localFile?'El archivo se abrió directamente desde el móvil y Chrome puede bloquear las consultas. Publícalo en una página HTTPS (por ejemplo, GitHub Pages) para activar las sugerencias.':'No se pudo acceder a los servicios de búsqueda. Puede ser un bloqueo CORS o un fallo temporal del proveedor. Vuelve a intentarlo.')+'</div>';
+    box.hidden=false;
+   }}
+  },450);
+ });
+ input.addEventListener('keydown',ev=>{
+  if(ev.key==='Escape')hideSuggestions(field);
+  if(ev.key==='Enter'){
+   const first=$(field+'Suggestions').querySelector('.suggestion');
+   if(first){ev.preventDefault();first.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))}
+  }
+ });
+ input.addEventListener('blur',()=>setTimeout(()=>hideSuggestions(field),180));
+}
+setupAutocomplete('origin');setupAutocomplete('destination');
+// Devuelve las coordenadas elegidas en el autocompletado. Si el usuario escribió
+// una dirección sin seleccionar sugerencia, conserva el geocodificador anterior.
+async function geocode(query, field){
+ const selected=field?selectedPlaces[field]:null;
+ if(selected && selected.label===query && Array.isArray(selected.coords)) return selected.coords;
+ const url='https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=es&q='+encodeURIComponent(query);
+ const response=await fetch(url,{headers:{'Accept-Language':'es'}});
+ if(!response.ok)throw Error('No se pudo buscar la dirección (HTTP '+response.status+').');
+ const rows=await response.json();
+ if(!rows.length)throw Error('No se encontró el lugar: '+query+'. Prueba a elegir una sugerencia.');
+ return [+rows[0].lat,+rows[0].lon];
+}
+async function getRoute(points){const path=points.map(p=>p[1]+','+p[0]).join(';');const r=await fetch('https://router.project-osrm.org/route/v1/driving/'+path+'?overview=full&geometries=geojson&steps=false');if(!r.ok)throw Error('Servicio de rutas no disponible (HTTP '+r.status+').');const d=await r.json();if(d.code!=='Ok'||!d.routes?.length)throw Error('No se pudo calcular una ruta por carretera.');return d.routes[0]}
+function parseStation(x){
+ const lat=num(x['Latitud']),lon=num(x['Longitud (WGS84)']??x['Longitud_x0020__x0028_WGS84_x0029_']??x['Longitud']);
+ const price=num(x['Precio Gasolina 95 E5']??x['Precio_x0020_Gasolina_x0020_95_x0020_E5']);
+ if(!Number.isFinite(lat)||!Number.isFinite(lon)||!Number.isFinite(price)||price<=0||Math.abs(lat)>90||Math.abs(lon)>180)return null;
+ return {id:x.IDEESS||Math.random(),name:x['Rótulo']||'Gasolinera',address:x['Dirección']||'',town:x['Municipio']||x['Localidad']||'',province:x['Provincia']||'',hours:x['Horario']||'',lat,lon,price};
+}
+function mapsUrl(s){return 'https://www.google.com/maps/dir/?api=1&destination='+s.lat+','+s.lon}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+$('gps').onclick=()=>{if(!navigator.geolocation){$('status').textContent='Este navegador no permite GPS.';return}navigator.geolocation.getCurrentPosition(p=>{gpsPoint=[p.coords.latitude,p.coords.longitude];$('origin').value='Mi ubicación actual';selectedPlaces.origin={label:'Mi ubicación actual',coords:gpsPoint};hideSuggestions('origin');$('status').textContent='Ubicación obtenida. Introduce el destino y selecciona una sugerencia.'},e=>{$('status').textContent='No se pudo obtener GPS: '+e.message+'. Prueba desde Chrome y concede permiso de ubicación.'},{enableHighAccuracy:true,timeout:15000})};
+$('calc').onclick=async()=>{
+ const btn=$('calc');btn.disabled=true;$('results').innerHTML='';$('summary').textContent='';$('status').textContent='Buscando ruta y descargando precios oficiales…';markers.clearLayers();if(routeLayer){map.removeLayer(routeLayer);routeLayer=null}
+ try{
+  const originText=$('origin').value.trim(),destText=$('destination').value.trim();if(!originText||!destText)throw Error('Introduce origen y destino.');
+  const start=originText==='Mi ubicación actual'&&gpsPoint?gpsPoint:await geocode(originText,'origin');
+  const end=await geocode(destText,'destination');
+  $('status').textContent='Consultando precios de MITECO…';
+  const [baseResp,fuelResp]=await Promise.all([getRoute([start,end]),fetch(MITECO,{cache:'no-store'})]);
+  if(!fuelResp.ok)throw Error('MITECO ha respondido HTTP '+fuelResp.status+'.');
+  const payload=await fuelResp.json(),raw=payload.ListaEESSPrecio||payload.listaEESSPrecio||[];
+  if(!raw.length)throw Error('La API no devolvió estaciones. Comprueba el endpoint de MITECO.');
+  const all=raw.map(parseStation).filter(Boolean);
+  if(!all.length)throw Error('No se reconocieron precios/coordenadas en la respuesta de MITECO. Puede haber cambiado el formato.');
+  const coords=baseResp.geometry.coordinates.map(c=>[c[1],c[0]]);
+  const radius=Number($('radius').value)||20,cons=Number($('cons').value),litres=Number($('litres').value);
+  if(!(cons>0&&litres>0))throw Error('El consumo y los litros deben ser mayores que cero.');
+  let candidates=all.map(s=>({...s,routeGap:gap([s.lat,s.lon],coords)})).filter(s=>s.routeGap<=radius).sort((a,b)=>a.routeGap-b.routeGap).slice(0,15);
+  if(!candidates.length)throw Error('No hay gasolineras con precio de gasolina 95 dentro de '+radius+' km de esta ruta.');
+  $('status').textContent=`Ruta de ${fmt(baseResp.distance/1000)} km. Calculando desvíos por carretera para ${candidates.length} estaciones…`;
+  let scored=[];
+  for(let i=0;i<candidates.length;i+=3){
+   const batch=candidates.slice(i,i+3);
+   const vals=await Promise.all(batch.map(async s=>{try{const r=await getRoute([start,[s.lat,s.lon],end]);const detour=Math.max(0,r.distance/1000-baseResp.distance/1000);const extra=detour*cons/100*s.price;return {...s,detour,extra,total:litres*s.price+extra}}catch(e){return null}}));
+   scored.push(...vals.filter(Boolean));$('status').textContent=`Calculando desvíos… ${Math.min(i+3,candidates.length)} de ${candidates.length}`;
+  }
+  if(!scored.length)throw Error('No se pudo calcular la ruta a las estaciones candidatas.');
+  const ref=[...scored].sort((a,b)=>a.detour-b.detour)[0];scored.forEach(s=>s.saving=(litres*ref.price+ref.extra)-s.total);scored.sort((a,b)=>a.total-b.total);
+  routeLayer=L.geoJSON({type:'Feature',geometry:baseResp.geometry},{style:{color:'#176b4b',weight:5,opacity:.8}}).addTo(map);
+  L.marker(start).addTo(markers).bindPopup('Origen');L.marker(end).addTo(markers).bindPopup('Destino');
+  scored.forEach((s,i)=>L.circleMarker([s.lat,s.lon],{radius:i===0?9:6,color:i===0?'#176b4b':'#245fbd',fillOpacity:.9}).addTo(markers).bindPopup(`<b>${esc(s.name)}</b><br>${fmt(s.price)} €/L<br>Desvío ${fmt(s.detour)} km`));
+  map.fitBounds(L.featureGroup([routeLayer,...markers.getLayers()]).getBounds().pad(.12));
+  $('summary').textContent=`Ruta principal: ${fmt(baseResp.distance/1000)} km. ${scored.length} estaciones comparadas. Precio de referencia: ${fmt(ref.price)} €/L (${ref.name}), la opción con menor desvío. Precios publicados: ${payload.Fecha||'fecha no indicada'}.`;
+  $('results').innerHTML=scored.map((s,i)=>`<article class="station"><div><h3>${i===0?'🏆 ':''}${esc(s.name)}</h3><div class="muted">${esc([s.address,s.town,s.province].filter(Boolean).join(', '))}</div><div class="muted">Desvío: ${fmt(s.detour)} km · combustible adicional: ${fmt(s.extra)} €</div><div class="saving">${s.saving>=0?'Ahorro estimado':'Coste adicional'} vs. referencia: ${fmt(Math.abs(s.saving))} €</div><a href="${mapsUrl(s)}" target="_blank" rel="noopener">Navegar hasta aquí ↗</a></div><div class="price">${fmt(s.price)} €<div class="muted">/ litro</div><span class="pill">${fmt(s.total)} € total</span></div></article>`).join('');
+  $('status').textContent='Cálculo terminado. Verifica el precio y el horario antes de salir.';
+ }catch(e){$('status').textContent='No se pudo completar: '+(e.message||e)+'. Si el error menciona CORS o Failed to fetch, el navegador está bloqueando MITECO; la solución sin servidor es abrir un servicio intermediario público, o usar el backend local del proyecto anterior.'}
+ finally{btn.disabled=false}
+};
+</script></body></html>
